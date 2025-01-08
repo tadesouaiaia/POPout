@@ -73,10 +73,6 @@ prs.test.emp <- function( prs, y, n.q=100 ){
         ptr <- which(q==(i-1))
         test <- t.test( fit$residual[ptr] )
         stat[i] <- test$statistic
-        if (i < 2){ 
-            print(i)
-            print(stat[i])  
-        }
     }
     r1 <- rank(-stat)
     r2 <- rank(stat)

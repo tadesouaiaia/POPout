@@ -1,8 +1,9 @@
+# POPout
+The POPOut Test 
+
 # To run popOut in R: 
-Rscript --vanilla popOut.R toy.prs toy.pheno
+Rscript --vanilla popOut.R data/toy.prs data/toy.pheno
 
 # To run popOut in Python: 
 ./popOut.py data/toy.prs data/toy.pheno
 
-# POPout
-The POPOut Test 
