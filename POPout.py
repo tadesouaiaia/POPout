@@ -1,12 +1,16 @@
 #!/usr/bin/python3
 
-from scipy import stats
-import random
-import math
-import matplotlib as mpl
+import matplotlib 
 import matplotlib.pyplot as plt
-import matplotlib
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes      
+import sys
+from collections import defaultdict as dd
+import numpy as np
+import scipy.stats as stats
+import statsmodels.api as sm
+
+
+#import matplotlib
+#from mpl_toolkits.axes_grid1.inset_locator import inset_axes      
 matplotlib.rcParams['xtick.labelsize'] = 24                                                                                                                                                                                 
 matplotlib.rcParams['ytick.labelsize'] = 24                                                                                                                                                                                 
 #matplotlib.rcParams['xtick.major.size'] = 18                                                                                                                                                                               
@@ -15,60 +19,12 @@ matplotlib.rcParams['axes.linewidth'] = 1.85
 
 
 plt.rc('text', usetex=True)
-mpl.use("Cairo")
+matplotlib.use("Cairo")
 import warnings
 warnings.filterwarnings("ignore")
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-'''
-#import sys
-#from scipy import stats 
-#from collections import defaultdict as dd
-#import numpy as np
-#from scipy import stats
-#from math import log
-import matplotlib
-import matplotlib.pyplot as plt
-import matplotlib.patheffects as pe
-from matplotlib.patches import Rectangle
-import matplotlib.patches as mpatches
-import pandas as pd                                                                                                                                                                 
-import statsmodels.api as sm                                                                                                                                                        
-import statsmodels.formula.api as smf                                                                                                                                               
-import itertools                                                                                                                                                                    
-from statsmodels.stats.outliers_influence import variance_inflation_factor                                                                                                          
-from patsy import dmatrices     
-from sklearn.preprocessing import MinMaxScaler
-from math import exp
-#matplotlib.rcParams['xtick.direction'] = 'inout'                                                                                                                                    
-#matplotlib.rcParams['ytick.direction'] = 'inout'                                                                                                                                   
-matplotlib.rcParams['ytick.direction'] = 'inout'                                                                                                                                       
-matplotlib.rcParams['xtick.labelsize'] = 25                                                                                                                                        
-matplotlib.rcParams['ytick.labelsize'] = 25                                                                                                                               
-#matplotlib.rcParams['figure.figsize'] = [26,14]                                                                                                                                    
-matplotlib.rcParams['xtick.major.pad'] = 5.5                                                                                                                                        
-matplotlib.rcParams['ytick.major.pad'] = 5.5                                                                                                                                        
-matplotlib.rcParams['xtick.direction'] = 'inout'                                                                                                                                    
-#matplotlib.rcParams['ytick.direction'] = 'inout'                                                                                                                                   
-matplotlib.rcParams['ytick.direction'] = 'in'                                                                                                                                       
-matplotlib.rcParams['axes.linewidth'] = 1.85                                                                                                                                        
-                                                      
-
-NK = {} 
-'''
 
 def load_p_lists(PK, p_mean, FULL=True): 
     if FULL: aS,zS = 100, 0 
@@ -574,16 +530,6 @@ if __name__ == '__main__':
 
 
 
-#!/usr/bin/python3
-import sys
-from collections import defaultdict as dd
-import numpy as np
-import scipy 
-import numpy as np
-import scipy.stats as stats
-import statsmodels.api as sm
-
-
 
 
 
@@ -818,7 +764,7 @@ class PopPlot:
         self.setup() 
 
     def setup(self):
-        self.fig = mpl.pyplot.gcf()
+        self.fig = matplotlib.pyplot.gcf()
         self.axes, self.ax_index = [], 0  
         xs1,xs2,xs3 = 16, 4,7
         ys1,ys2,ys3 = 16, 4,4
@@ -947,7 +893,7 @@ class PopPlot:
 
 
     def finish(self): 
-        fig_name = 'test'
+        fig_name = self.args.out
         
         plt.subplots_adjust(left=0.1, bottom=0.15, right=0.95, top=0.94,wspace=0.2, hspace=0.2) 
         plt.savefig(fig_name+'.png', dpi=300) 
@@ -1143,7 +1089,7 @@ if __name__ == '__main__':
     parser.add_argument('prs',type=argparse.FileType('r')) 
     parser.add_argument('pheno',type=argparse.FileType('r')) 
     parser.add_argument("--names", nargs='+',default=[],type=str,help="Trait Name(s)")
-    parser.add_argument("--out", type=str,default='popOut',help="Output Prefix")
+    parser.add_argument("--out", type=str,default='out',help="Output Prefix")
     parser.add_argument("--mode", type=str,default='tailsOnly',help="Output Prefix")
     parser.add_argument("--alpha", type=float,default=0.01,help="Cutoff to Identify Complex Architecture",metavar='') 
     parser.add_argument("--skipPlots", action='store_true', default=False,help="Skip Plotting")
