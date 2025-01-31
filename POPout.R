@@ -83,31 +83,41 @@ prs.test.emp <- function( prs, y, n.q=100 ){
 }
 
 args <- commandArgs(trailingOnly=TRUE)
-prs.file <- args[1]
-pheno.file <- args[2]
+
+
+
+if (length(args) == 1) {
+    pop.file <- args[1]
+    prs <- na.omit(fread(pop.file))
+    pheno <- na.omit(fread(pop.file))
+    t_name = strsplit(pop.file, split=".pop") 
+    size <- length(prs) 
+
+
+} else if (length(args) == 2){
+
+    prs.file <- args[1]
+    pheno.file <- args[2]
+    prs <- na.omit(fread(prs.file))
+    pheno <- na.omit(fread(pheno.file))
+    ids <- intersect( prs$IID, pheno$IID )
+    size <- length(ids) 
+    prs <- prs[match( ids, prs$IID ),]
+    pheno <- pheno[match( ids, pheno$IID ),]
+    t_name = strsplit(pheno.file, split=".target") 
+}
+
 
 #prs <- fread(prs.file)
-prs <- na.omit(fread(prs.file))
 
 
 #pheno <- fread(pheno.file)
-pheno <- na.omit(fread(pheno.file))
 
 
 
 
 
 
-ids <- intersect( prs$IID, pheno$IID )
-
-
-size <- length(ids) 
-
-
-
-
-prs <- prs[match( ids, prs$IID ),]
-pheno <- pheno[match( ids, pheno$IID ),]
 
 
 
@@ -118,8 +128,6 @@ test <- prs.test( prs$PRS, pheno$Phenotype )
 test.empirical <- prs.test.emp( prs$PRS, pheno$Phenotype )
 
 qc <- prs.test.qc( prs$PRS, pheno$Phenotype )
-
-t_name = strsplit(pheno.file, split=".target") 
 
 out <- data.frame( t_name, size, t(c(test, test.empirical, as.numeric(qc[2]))), qc[1] )
 

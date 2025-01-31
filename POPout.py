@@ -516,22 +516,6 @@ def run_script(tfiles, pt = 5):
 
 
 
-'''
-if __name__ == '__main__':
-    from optparse import OptionParser
-    usage = "usage: ./%prog [options] data_file"
-    parser = OptionParser(usage=usage)
-    parser.add_option("--pt", default = 5, type=int, help="Output Filename Prefix")
-    (options, args) = parser.parse_args()
-    run_script(args, options.pt) 
-''' 
-
-
-
-
-
-
-
 
 
 
@@ -665,7 +649,7 @@ class SibTable:
 
 
 class PopProgress:
-    def __init__(self, args, command_line): 
+    def __init__(self, args, command_line, MODE='Analyze Tails'): 
         self.args = args
         if args.silent: self.ACTIVE = False 
         else:           self.ACTIVE = True 
@@ -673,13 +657,12 @@ class PopProgress:
         self.out2  = sys.stderr 
         self.space = '' 
         self.show('\nPopOut Begins:  '+command_line+'\n')
-        self.show('         Mode:  '+args.mode+'\n') 
+        self.show('         Mode:  '+MODE+'\n') 
         
-        if len(args.popfiles) > 0: 
-            self.show('   Input Files: '+",".join([sf.name.split('/')[-1] for sf in args.popfiles])+'\n') 
+        if len(args.popfiles) > 0: self.show('  Input Files:  '+",".join([sf.name.split('/')[-1] for sf in args.popfiles])+'\n') 
         else: 
-            self.show('   Input Files: '+",".join([sf.name.split('/')[-1] for sf in [args.prs,args.pheno]])+'\n') 
-        self.show('Output Prefix: '+self.args.out+'\n\n')
+            self.show('  Input Files:  '+",".join([sf.name.split('/')[-1] for sf in args.makePOPfile])+'\n') 
+        self.show('Output Prefix:  '+self.args.out+'\n\n')
         self.loc = None
         self.spl = '' 
 
@@ -714,7 +697,7 @@ class PopProgress:
 
     def finish(self): 
         if self.loc is not None: self.show('...Finished\n','NA') 
-        self.show('\nSibArc Completed\n','NA') 
+        self.show('\nPOPout Completed\n','NA') 
 
     def update(self, msg): 
         if self.loc is not None: self.show('...Finished\n','NA') 
@@ -754,7 +737,9 @@ class PopPlot:
     def __init__(self, args, progress, results):
         self.args, self.progress, self.results = args, progress, results
         
-        self.names = [k for k in self.results.keys()] 
+        self.names = [k for k in self.results.keys()]
+
+        self.fs1, self.fs2, self.fs3 = 34, 24, 15
 
 
         #if not self.args.normalize: self.fig_prefix = self.args.out+'.fig' 
@@ -775,11 +760,11 @@ class PopPlot:
         self.fig = matplotlib.pyplot.gcf()
         self.axes, self.ax_index = [], 0  
         hl = int(1+len(self.names)/2.0) 
-        if len(self.names) == 1: self.WD, self.HT, self.fs1, self.rows, self.cols = 10, 8, 15, 1, 1  
-        elif len(self.names) == 2: self.WD, self.HT, self.fs1, self.rows, self.cols = 17, 8, 15, 1, 2  
-        elif len(self.names) == 3: self.WD, self.HT, self.fs1, self.rows, self.cols = 24, 8, 15, 1, 3  
-        elif len(self.names) == 4: self.WD, self.HT, self.fs1, self.rows, self.cols = 17, 15, 15, 2, 2  
-        else:  self.WD, self.HT, self.fs1, self.rows, self.cols = 15, 15+(5*hl-2), 15, hl, 2  
+        if len(self.names) == 1: self.WD, self.HT, self.rows, self.cols = 10, 8, 1, 1  
+        elif len(self.names) == 2: self.WD, self.HT, self.rows, self.cols = 17, 8, 1, 2  
+        elif len(self.names) == 3: self.WD, self.HT, self.rows, self.cols = 24, 8, 1, 3  
+        elif len(self.names) == 4: self.WD, self.HT, self.rows, self.cols = 17, 15, 2, 2  
+        else:  self.WD, self.HT, self.rows, self.cols = 15, 15+(5*hl-2), hl, 2  
         self.fig.set_size_inches(self.WD, self.HT) 
         for i in range(self.rows): 
             for j in range(self.cols):  
@@ -795,11 +780,21 @@ class PopPlot:
 
     def draw_curve(self, ax, n): 
         X, Y1, Y2 = self.results[n]['means'] 
-        ax.plot(X, Y1, color = 'darkorange') 
-        ax.scatter(X, Y2) 
         ax.set_title(n, fontsize=self.fs1) 
+        ax.plot(X, Y1, color = 'darkorange') 
+        ax.scatter(X[1:-1], Y2[1:-1], color='dodgerblue',ec='k') 
+        
+        p1, p2 = self.results[n]['pvals'] 
+        e1, e2 = self.results[n]['effects'] 
+
+        if p1 > 0.05 or e1[0] < 0: ax.scatter(X[0], Y2[0], marker='v', color='dodgerblue', ec='k', s=111) 
+        else:                      ax.scatter(X[0], Y2[0], marker='^', color='dodgerblue', ec='k', s=111) 
+        
+        if p2 > 0.05 or e2[0] > 0: ax.scatter(X[-1], Y2[-1], marker='^', color='dodgerblue', ec='k', s=111) 
+        else:                      ax.scatter(X[-1], Y2[-1], marker='v', color='dodgerblue', ec='k', s=111) 
+        
         ax.set_yticks([]) 
-        ax.set_xlabel('Trait Percentile',fontsize=self.fs1) 
+        ax.set_xlabel('Trait Percentile',fontsize=self.fs2) 
         ax.set_ylabel('PRS', fontsize=self.fs1) 
         #dict_keys(['params', 'pvals', 'effects', 'empirical', 'qc_val', 'QC', 'means'])
 
@@ -808,32 +803,29 @@ class PopPlot:
         self.fig = matplotlib.pyplot.gcf()
         self.axes, self.ax_index = [], 0  
         hl = int(len(self.names)/4.0)
-        self.WD, self.HT, self.fs1, self.rows, self.cols = 10, 3+(hl), 35, 1, 1  
+        self.WD, self.HT, self.rows, self.cols = 10, 3+(hl), 1, 1  
         self.fig.set_size_inches(self.WD, self.HT) 
         self.ax = plt.subplot2grid((self.rows, self.cols), (0,0),     rowspan=1, colspan=1)
         cmap = plt.cm.get_cmap('hsv', len(self.names)) 
-
-
         self.yloc = 0 
         for i,n in enumerate(self.names): self.add_forest(n, cmap(i)) 
         self.yloc += 0.5
         self.ax.set_yticks([]) 
-        
-        self.ax.set_xticks([-2,-1.5,-1,-0.5,0.5,1,1.5,2]) 
-        self.ax.set_xticklabels([-1*(-2+self.rO),-1*(-1.5+self.rO),-1*(-1+self.rO),-1*(-0.5+self.rO),0.5-self.rO,1-self.rO,1.5-self.rO,2-self.rO]) 
-
-        self.ax.set_xlim(-2.2,2.2) 
+        self.ax.set_xticks([-2.5, -2,-1.5,-1,-0.5,0.5,1,1.5,2, 2.5]) 
+        self.ax.set_xticklabels([-1*(-2.5*self.rO), -1*(-2+self.rO),-1*(-1.5+self.rO),-1*(-1+self.rO),-1*(-0.5+self.rO),0.5-self.rO,1-self.rO,1.5-self.rO,2-self.rO,2.5-self.rO], fontsize=self.fs3)
+        self.ax.set_xlim(-2.55,2.55) 
         self.ax.set_ylim(self.yloc,1) 
         
-        self.ax.set_xlabel('Tail Effects', fontsize=self.fs1) 
-
+        self.ax.set_xlabel('POPout\nEffects', fontsize=self.fs2-2) 
+        self.ax.text(-1.5,self.yloc*1.18-0.33,'Lower Tail', ha='center',fontsize=self.fs2-2, fontweight='bold') 
+        self.ax.text(1.5,self.yloc*1.18-0.33,'Upper Tail', ha='center',fontsize=self.fs2-2, fontweight='bold') 
+        
 
         for xl in [-2,-1.5,-1,-0.5,0.5,1,1.5,2]: 
             self.ax.plot([xl,xl],[self.yloc, 1], color='k', linestyle='--', alpha=0.1) 
 
-
         fig_name = self.args.out+'-effects'
-        plt.subplots_adjust(left=0.05, bottom=0.25, right=0.95, top=0.94,wspace=0.2, hspace=0.2) 
+        plt.subplots_adjust(left=0.05, bottom=0.30, right=0.95, top=0.94,wspace=0.2, hspace=0.2) 
         if  self.args.plotFormat == 'pdf': plt.savefig(fig_name+'.pdf', dpi=300) 
         else:                              plt.savefig(fig_name+'.png', dpi=300) 
         self.fig.clf() 
@@ -847,13 +839,24 @@ class PopPlot:
         eL, eL1, eL2  = [-1*(self.rO + x) for x in self.results[n]['effects'][0]] 
         eH, eH1, eH2  = [self.rO + (x * -1) for x in self.results[n]['effects'][1]] 
         QC = self.results[n]['QC'] 
-        self.ax.text(0, self.yloc, n, ha='center', va='center',fontsize=self.fs1) 
-        self.ax.plot([eL1, eL2], [self.yloc, self.yloc], color = clr, lw = 2) 
-        self.ax.plot([eH1, eH2], [self.yloc, self.yloc], color = clr, lw = 2) 
-        self.ax.scatter(eL, self.yloc, color = clr, s = 200) 
-        self.ax.scatter(eH, self.yloc, color = clr, s = 200)  
-        self.yloc -= 1
+        
 
+        self.ax.text(0, self.yloc, n, ha='center', va='center',fontsize=self.fs2) 
+        self.ax.plot([eL1, eL2], [self.yloc, self.yloc], color = clr, lw = 2, zorder=1) 
+        self.ax.plot([eH1, eH2], [self.yloc, self.yloc], color = clr, lw = 2, zorder=1) 
+        if not QC: 
+            self.ax.scatter(eL, self.yloc, facecolor = 'white', edgecolor = clr, lw = 2, s = 200, zorder=2) 
+            self.ax.scatter(eH, self.yloc, facecolor='white', edgecolor = clr, lw=2, s = 200,zorder=2)  
+        else: 
+            if self.results[n]['pvals'][0] < 0.05: self.ax.scatter(eL, self.yloc, fc = clr, ec='k', lw=2,s = 200) 
+            else:                                  self.ax.scatter(eL, self.yloc, color = clr, s = 200) 
+            if self.results[n]['pvals'][1] < 0.05: self.ax.scatter(eH, self.yloc, fc = clr, ec = 'k', lw=2 ,s = 200)  
+            else:                                  self.ax.scatter(eH, self.yloc, color = clr, s = 200)  
+        
+
+
+
+        self.yloc -= 1
 
 
 
@@ -888,83 +891,9 @@ class PopPlot:
         Ye = [b0 + b1 * x for x in X] 
         ax.plot(self.popOut.qt_keys, Ye, color = 'darkorange') 
         ax.scatter(self.popOut.qt_keys, Y) 
-
-        #args
-        #progress
-        #result
-        #pair_data
-        #ids
-        #prs
-        #phenos
-        #prsPheno
-        #phenoPrs
-        #prsPhenoBins
-            #phenoPrsBins
-            #qt_keys
-            #prsPhenoMeans
-            #phenoPrsMeans
-            #model
-            #all_pvs
-            #qc_pv
-            #plot
+        return
 
 
-
-
-
-
-    def draw_summary(self, f_name, name, pairs, h2, tt): 
-        self.pairs, self.h2, self.tt = pairs, h2, tt 
-        
-        self.yMax, self.X = 0.5, sorted(self.pairs.keys())  
-        self.m1 = [np.mean([p[0] for p in self.pairs[x]]) for x in self.X]
-        self.m2 = [np.mean([p[1] for p in self.pairs[x]]) for x in self.X]
-        self.s2 = [stats.sem([p[1] for p in self.pairs[x]]) for x in self.X]
-        
-        self.ax, ax2, ax3 = self.axes[self.ax_index], self.axes[self.ax_index + 1], self.axes[self.ax_index+2] 
-        
-        self.draw_herit_lines() 
-        self.draw_curves(name, self.h2.body) 
-        self.ax.text(-1, self.yMax*0.98, " ".join(name.split('_')), va='top', ha='left', fontsize=self.fs0+12) 
-        if self.args.savePlotdata: 
-            self.out.write('%-30s %40s %15s %s\n' % (f_name, name, 'X', ','.join([str(x) for x in self.X]))) 
-            self.out.write('%-30s %40s %15s %s\n' % (f_name, name, 'm1', ','.join([str(round(x,4)) for x in self.m1]))) 
-            self.out.write('%-30s %40s %15s %s\n' % (f_name, name, 'm2', ','.join([str(round(x,4)) for x in self.m2]))) 
-            self.out.write('%-30s %40s %15s %s\n' % (f_name, name, 'sem', ','.join([str(round(x,4)) for x in self.s2]))) 
-        
-        t1 = SibTable(self.args, self.axes[self.ax_index+1]).make_res(tt,  self.mode, self.flen)  
-        t2 = SibTable(self.args, self.axes[self.ax_index+2]).make_h2(h2,   self.mode, self.flen)  
-        self.ax_index += 3
-
-
-    def draw_herit_lines(self): 
-        for i, h in enumerate(self.herits):
-            sh = [(s * h)/2.0 for s in self.m1]
-            if i == 0: self.ax.plot(self.X, sh, color=self.color_key[h], linewidth=3, alpha=0.7)
-            else:
-                z1 = [(a+b+b)/3.0 for a, b in zip(sh, lp)]
-                z2 = [(a+b)/2.0 for a, b in zip(sh, lp)]
-                self.ax.plot(self.X, z1, color=self.color_key[h], linewidth=4, alpha=0.3)
-                self.ax.plot(self.X, z2, color=self.color_key[h], linewidth=4, alpha=0.3)
-                self.ax.plot(self.X, sh, color=self.color_key[h], linewidth=4, alpha=0.3)
-            lp = [z for z in sh]
-            if max(lp) > self.yMax: self.yMax = max(lp) 
-
-
-
-
-
-        
-        
-
-
-    def finish(self): 
-        fig_name = self.args.out
-        plt.subplots_adjust(left=0.1, bottom=0.15, right=0.95, top=0.94,wspace=0.2, hspace=0.2) 
-        plt.savefig(fig_name+'.png', dpi=300) 
-        plt.savefig(fig_name+'.pdf', dpi=300) 
-
-    
 
 
     
@@ -974,39 +903,17 @@ class PopPlot:
 
 class PopOut:
     def __init__(self, args, progress): 
-        self.args, self.progress = args, progress 
-        self.results = dd(lambda: {}) 
-    
+        self.args, self.progress, self.results = args, progress, dd(lambda: {}) 
+        self.SS, self.SK = self.args.tailSize, self.args.tailSize/100.0
+        
+        if self.SS > 25: self.PopError('Invalid TailSize (Must be below 25%)')
+        if self.SS < 1 and self.SS not in [0.5,0.25,0.1]: self.PopError('Invalid Tailsize - Accepted Fractions are 0.5, 0.25, 0.1') 
+
+
     def PopError(self, msg):  
         sys.stderr.write('POPError- '+msg+'\n') 
         sys.exit() 
     
-    def set_pair_files(self,prsFile, phenoFile): 
-        self.pair_data = dd(list) 
-        for line in prsFile:
-            line = line.split() 
-            try: xId, xPrs = line[0], float(line[-1]) 
-            except ValueError: continue 
-            self.pair_data[xId] = [xPrs]  
-
-        for line in phenoFile: 
-            line = line.split() 
-            try: xId, xVal = line[0], float(line[-1]) 
-            except ValueError: continue 
-            if xId in self.pair_data: 
-                self.pair_data[xId].append(xVal) 
-
-        self.ids, self.prs, self.phenos, self.prsPheno, self.phenoPrs = [], [], [], [], [] 
-        for xId,xVals in self.pair_data.items(): 
-            if len(xVals) == 2: 
-                self.ids.append(xId) 
-                self.prs.append(xVals[0]) 
-                self.phenos.append(xVals[1]) 
-                self.prsPheno.append([xVals[0], xVals[1]]) 
-                self.phenoPrs.append([xVals[1], xVals[0]]) 
-        self.summarize() 
-        return self
-   
     
     def process(self): 
 
@@ -1048,7 +955,7 @@ class PopOut:
         self.name, self.phenoPrs = name, [] 
         for i,lp in enumerate(f): 
             line = lp.split()
-            try: pheno, prs = float(line[0]), float(line[1]) 
+            try: prs, pheno = float(line[0]), float(line[1]) 
             except ValueError: 
                 if i == 0: continue 
                 else: self.PopError('Invalid Line: '+lp.strip()) 
@@ -1064,22 +971,40 @@ class PopOut:
         for i,(pheno,prs, pheno_qt) in enumerate(self.phenoPrs): self.phenoPrs[i].append(round(100*(i/len(self.phenoPrs)),2))
         self.phenoPrs.sort() 
         self.phenos, self.prs = [d[0] for d in self.phenoPrs], [d[1] for d in self.phenoPrs] 
-        
-        self.run_test() 
+       
+
+
+        self.run_test(self.SK) 
         self.run_empirical_pv() 
         self.run_qc() 
         self.get_means() 
 
 
 
+
+
+
+    def get_qt(self, qt): 
+        if self.SS == 1: return int(qt) 
+        elif self.SS > 1: return round(float(int(qt)) / self.SS) * self.SS  
+        elif self.SS == 0.5: return round(round(round(qt,1) *2) /2,1)
+        elif self.SS == 0.25: return round(round(round(qt,1) *4) /4,1)
+        elif self.SS == 0.1:  return round(qt,1)  
+        else: print('not supported') 
+
+
+
     def get_means(self): 
-        prs_obs = dd(list) 
-        prs_exp = dd(list) 
+        prs_obs, prs_exp = dd(list), dd(list) 
         yInt, beta = self.results[self.name]['params'] 
+       
         for pheno, prs, pheno_qt, prs_qt in self.phenoPrs: 
-            bin_val = int(pheno_qt) 
+            bin_val = self.get_qt(pheno_qt) 
             prs_obs[bin_val].append(prs) 
             prs_exp[bin_val].append(yInt + beta*pheno) 
+       
+
+
         X = [x for x in prs_obs.keys()] 
         prs_obs = [np.mean(prs_obs[x]) for x in X] 
         prs_exp = [np.mean(prs_exp[x]) for x in X] 
@@ -1090,153 +1015,116 @@ class PopOut:
 
 
 
-    def assign_to_quants(self, y, n):
-        q = np.percentile(y, np.linspace(100 / n, 100 * (n - 1) / n, n - 1))  # Quantiles at (1/n, 2/n, ..., (n-1)/n)
-        y_cat = np.digitize(y, q) # Assign values to quantiles
-        return y_cat
-
-
-
-
-
     def run_test(self, K=0.01):
-        #prs = self.prs 
-        #y = self.phenos
         # Fit the regression model
         X = sm.add_constant(self.phenos)  # Add a constant to the predictor variable (for the intercept)
         self.model = sm.OLS(self.prs, X).fit()
-
         self.results[self.name]['params'] = self.model.params 
-
-
         # Test upper tail "regression to mean"
         T_upper = np.percentile(self.phenos, 100 - K * 100)
         upper_tail_indices = np.where(self.phenos > T_upper)[0]
         residuals_upper = self.model.resid[upper_tail_indices]
         t_stat_upper, p_value_upper = stats.ttest_1samp(residuals_upper, 0)
         ci_upper = stats.t.interval(0.95, len(residuals_upper) - 1, loc=np.mean(residuals_upper), scale=np.std(residuals_upper) / np.sqrt(len(residuals_upper)))
-        
         # Test lower tail "regression to mean"
         T_lower = np.percentile(self.phenos, K * 100)
         lower_tail_indices = np.where(self.phenos < T_lower)[0]
         residuals_lower = self.model.resid[lower_tail_indices]
         t_stat_lower, p_value_lower = stats.ttest_1samp(residuals_lower, 0)
         ci_lower = stats.t.interval(0.95, len(residuals_lower) - 1, loc=np.mean(residuals_lower), scale=np.std(residuals_lower) / np.sqrt(len(residuals_lower)))
-
         # Standard deviation of prs
         ms = np.std(self.prs)
         # Organizing the result
-        
         self.results[self.name]['pvals'] = [p_value_lower, p_value_upper] 
         self.results[self.name]['effects'] = [[np.mean(residuals_lower) / ms, ci_lower[0] / ms, ci_lower[1]/ms]]
         self.results[self.name]['effects'].append([np.mean(residuals_upper) / ms, ci_upper[0] / ms, ci_upper[1]/ms]) 
         return
 
 
-        my_result = {
-            'effect.lower': np.mean(residuals_lower),
-            'ci.lower.lower': ci_lower[0],
-            'ci.lower.upper': ci_lower[1],
-            'p.lower': p_value_lower,
-            'effect.upper': np.mean(residuals_upper),
-            'ci.upper.lower': ci_upper[0],
-            'ci.upper.upper': ci_upper[1],
-            'p.upper': p_value_upper,
-            'sd': ms,
-            're.lower': np.mean(residuals_lower) / ms,
-            'ri.lower.lower': ci_lower[0] / ms,
-            'ri.lower.upper': ci_lower[1] / ms,
-            're.upper': np.mean(residuals_upper) / ms,
-            'ri.upper.lower': ci_upper[0] / ms,
-            'ri.upper.upper': ci_upper[1] / ms
-        }
-        for x,y in my_result.items(): self.result[x] = y 
-        return
 
+    def run_empirical_pv(self, n_q=100):
+
+        resids = dd(list) 
+        yInt, beta = self.model.params  
+        for pheno, prs, pheno_qt, prs_qt in self.phenoPrs: 
+            pred = yInt + beta*pheno 
+            bin_val = self.get_qt(pheno_qt) 
+            resids[bin_val].append(pred-prs) 
+            #resids[int(pheno_qt)].append(pred-prs) 
+        
+        emps, emp_ranks = [], [] 
+        for k,R in resids.items(): 
+            t_stat, pval = stats.ttest_1samp(R,0) 
+            emps.append([t_stat,pval,k]) 
+        
+        for i,(ts,pv,loc) in enumerate(sorted(emps)): 
+            emp_ranks.append([loc,i,ts,pv]) 
+
+        emp_ranks.sort()  
+        
+
+        p = (1+emp_ranks[0][1])/len(emp_ranks), (len(emp_ranks) - emp_ranks[-1][1])/len(emp_ranks)
+        self.results[self.name]['empirical'] = p 
 
 
     def run_qc(self,stepsize=1): 
         trunc_data = [d for d in self.phenoPrs if d[2] > 10 and d[2] < 90] 
         X = sm.add_constant([t[0] for t in trunc_data])  # Add a constant to the predictor variable (for the intercept)
-        self.model = sm.OLS([t[1] for t in trunc_data], X).fit()
-        yInt, beta = self.model.params  
+        qc_model = sm.OLS([t[1] for t in trunc_data], X).fit()
+        yInt, beta = qc_model.params  
         resids = dd(list) 
         for pheno, prs, pheno_qt, prs_qt in trunc_data: 
             pred = yInt + beta*pheno 
-            resids[int(pheno_qt)].append(pred-prs) 
+            bin_val = self.get_qt(pheno_qt) 
+            resids[bin_val].append(pred-prs) 
+            #resids[int(pheno_qt)].append(pred-prs) 
         middle_pvs = [] 
         for k,R in resids.items(): 
             t_stat, pval = stats.ttest_1samp(R,0) 
             middle_pvs.append(pval) 
-
-        qc_val = 80*min(middle_pvs) 
+        qc_val = min(middle_pvs) * len(middle_pvs) 
         self.results[self.name]['qc_val'] = qc_val 
         self.results[self.name]['QC'] = qc_val > 0.05 
-        #self.qc_test_val = 80*min(middle_pvs) 
-
-
-
-
-
-    def run_empirical_pv(self, n_q=100):
-        q = self.assign_to_quants(self.phenos, n_q)
-        self.all_pvs, stat_pairs = [], [] 
-        # Loop through quantiles to perform t-tests
-        for i in range(n_q):
-            ptr = np.where(q == i)[0]
-            residuals = self.model.resid[ptr]
-            t_stat, p_value = stats.ttest_1samp(residuals, 0)
-            stat_pairs.append([t_stat, i]) 
-            self.all_pvs.append(p_value) 
-        stat_pairs.sort() 
-        stat_pairs = sorted([[sp[1],i] for i,sp in enumerate(sorted(stat_pairs))]) 
-        p = [(100-stat_pairs[0][1])/100.0, (stat_pairs[-1][1]+1.0)/100.0]
-        self.results[self.name]['empirical'] = p 
-        self.empirical = p 
-        #self.empirical = p 
-        return 
+        return
 
 
 
 
 
 
+def run_script(args, parser, command_line):
 
-
-
-def run_script(args, command_line, EXTEND=True):
-
-    progress = PopProgress(args,command_line) 
-    popOut = PopOut(args, progress) 
 
     if len(args.popfiles) > 0: 
+        progress = PopProgress(args,command_line) 
+        popOut = PopOut(args, progress) 
         if len(args.names) != len(args.popfiles): 
             names = [p.name.split('/')[-1].split('.')[0] for p in args.popfiles] 
             if len(list(set(names))) == len(args.popfiles): args.names = names 
             else: args.names = ['trait'+str(i+1) for i,n in enumerate(args.popfiles)] 
         for i,f in enumerate(args.popfiles): popOut.read_and_run(f, args.names[i])
         popOut.process() 
-
-
-
-    
-    #popOut.run_qc_test() 
+        progress.finish()  
+    elif args.makePOPfile: 
+        progress = PopProgress(args,command_line, MODE='Make Popfile') 
+        K = {} 
+        for i,f in enumerate(args.makePOPfile): 
+            for j,line in enumerate(f): 
+                line = line.split()
+                if len(line) == 1: line = line[1].split(',')
+                try: xId, xVal = line[0], float(line[-1])  
+                except ValueError: continue 
+                if i == 0: K[xId] = [xVal]  
+                elif xId in K: K[xId].append(xVal) 
+                else: continue
+        w = open(args.out+'.pop','w') 
+        w.write('%-20s %20s\n' % ('PRS','Phenotype')) 
+        for V in K.values(): 
+            if len(V) == 2: w.write('%-20s %20s\n' % (V[0], V[1]))  
+        w.close() 
+        progress.finish() 
     else: 
-        if args.prs and args.pheno: 
-            print('yes') 
-            popOut.set_pair_files(args.prs, args.pheno) 
-    
-
-            popOut.run_test() 
-    
-            popOut.plot() 
-
-
-
-        for x,y in popOut.result.items(): 
-            print(x,y) 
-
-
+        parser.print_help() 
     sys.exit() 
 
 
@@ -1247,21 +1135,20 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.allow_abbrev=True
     
-    parser.add_argument('popfiles',type=argparse.FileType('r'),nargs='+') 
-    #parser.add_argument('pheno',type=argparse.FileType('r')) 
-    #parser.add_argument('prs',type=argparse.FileType('r')) 
-    parser.add_argument('--prs',type=argparse.FileType('r'), help='Phenotype File') 
-    parser.add_argument('--pheno',type=argparse.FileType('r'), help='Phenotype File') 
-    parser.add_argument("--names", nargs='+',default=[],type=str,help="Trait Name(s)")
-    parser.add_argument("--out", type=str,default='out',help="Output Prefix")
-    parser.add_argument("--plotFormat", type=str,default='pdf',help="Output Prefix")
-    parser.add_argument("--mode", type=str,default='tailsOnly',help="Output Prefix")
-    parser.add_argument("--normalize", action='store_true', default=False,help="Rank Inverse Normal Transform Data (For NonNormal Input)") 
+
+    # PRS ON PHENOTYPE 
+    parser.add_argument('popfiles',type=argparse.FileType('r'),nargs='*') 
+    parser.add_argument("--names", nargs='+',default=[],type=str,metavar='',help="Trait Name(s)")
+    parser.add_argument("--tailSize", type=float,default=1.0,metavar='',help="Tail Size (default 1 Percent)")
+    parser.add_argument('--makePOPfile',type=argparse.FileType('r'), nargs = 2, metavar='', help='Make POP File (PRS on Phenotype)') 
+    parser.add_argument("-o","--out", type=str,default='out',metavar='',help="Output Prefix")
+    parser.add_argument("--plotFormat", type=str,default='pdf',metavar='',help="pdf or png")
     parser.add_argument("--silent", action='store_true', default=False,help="Suppress Output Stream") 
     args = parser.parse_args() 
+   
+    # print 
 
-    #run_script(args.prs, args.pheno, arg, ' '.join(sys.argv)) 
-    run_script(args, ' '.join(sys.argv)) 
+    run_script(args, parser, ' '.join(sys.argv)) 
 
 
 
