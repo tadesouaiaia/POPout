@@ -16,12 +16,12 @@ The POPOut Test
 
 # 3a) To Run POPout on a Multiple POP Files and Select Names and Colors (for forest plot) 
 
-./POPout.py -o test data/toy_bp.pop ../../data/toy_height.pop --names "Blood Pressure" "Height" --colors red orange
+./POPout.py -o test data/toy_bp.pop data/toy_height.pop --names "Blood Pressure" "Height" --colors red orange
 
 
 # 3b) Alternatively, set names/colors using a config file: 
 
-./POPout.py -o test data/*.pop --config ../data/toy.config
+./POPout.py -o test data/*.pop --config data/toy.config
 
 
 # 4) To create a POP file using Python: 
