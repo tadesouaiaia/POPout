@@ -31,170 +31,6 @@ warnings.filterwarnings("ignore")
 
 
 #############################################################################################
-##################################      FUNCTIONS         ###################################
-#############################################################################################
-
-
-# ----------------------------------------
-# Munge Functions (translations of R fns)
-# ----------------------------------------
-
-def est_prop_in_tail(effect_size, beta, r2, tail=0.01):
-    """
-    effect_size: length-2 array-like [lower_effect, upper_effect]
-    beta: assumed effect size of rare large-effect variants
-    r2: variance explained (from comboResult, first number)
-    tail: tail proportion (default 1%)
-    Returns: np.array([prop_lower, prop_upper])
-    """
-    kappa = norm.ppf(1 - tail)
-    percentile_pushed_to_tail = norm.cdf(beta - kappa)
-
-    #print(kappa) 
-    #print(percentile_pushed_to_tail, 'hmmm')  
-    # qnorm(percentile.pushed.to.tail, lower.tail=FALSE) -> norm.ppf(1 - p)
-    Z1 = norm.ppf(1 - percentile_pushed_to_tail)
-    Z0 = norm.ppf(1 - tail)
-
-    # m.Y99.rare <- sqrt(r2) * dnorm(Z1) / percentile.pushed.to.tail
-    mY99_rare = math.sqrt(r2) * norm.pdf(Z1) / max(percentile_pushed_to_tail, 1e-300)
-    # m.Y99 <- sqrt(r2) * dnorm(Z0) / tail
-    mY99 = math.sqrt(r2) * norm.pdf(Z0) / tail
-
-    out = [0.0, 0.0]
-    for i in range(2):
-        if effect_size[i] > 0:
-            denom = (mY99 - mY99_rare)
-            
-            #print(effect_size[i], mY99, mY99_rare) 
-            #print(mY99 - mY99_rare) 
-
-            if denom <= 0:
-                out[i] = 1.0  # avoid negatives; conservative cap
-            else:
-                out[i] = effect_size[i] / denom
-
-    return np.array(out, dtype=float)
-
-
-def h2_rare_big(prop_in_tail, beta, tail=0.01, rare_maf=1e-4):
-    """
-    prop_in_tail: length-2 array-like, from est_prop_in_tail()
-    beta: presumed effect size of rare large-effect variants
-    tail: tail proportion
-    rare_maf: rare MAF (R default 1e-4; the main loop calls with 1e-5)
-    Returns dict matching R names:
-      'h2','sum.rare.freq1','sum.rare.freq2','m1','m2','percentile.pushed.to.tail'
-    """
-    kappa = norm.ppf(1 - tail)
-    percentile_pushed_to_tail = norm.cdf(beta - kappa)
-
-    sum_rare_freq = []
-    m = []
-    var_rare = []
-    for i in range(2):
-        p = prop_in_tail[i]
-        num = p * tail
-        denom = p * tail + (1 - p) * percentile_pushed_to_tail
-        denom = max(denom, 1e-300)
-        srf = num / denom
-        sum_rare_freq.append(srf)
-        m_i = 0.5 * srf / rare_maf
-        m.append(m_i)
-        var_rare.append(m_i * 2 * rare_maf * (1 - rare_maf) * (beta ** 2))
-
-    h2 = sum(var_rare) / (1 + sum(var_rare))
-    return {
-        'h2': h2,
-        'sum.rare.freq1': sum_rare_freq[0],
-        'sum.rare.freq2': sum_rare_freq[1],
-        'm1': m[0],
-        'm2': m[1],
-        'percentile.pushed.to.tail': percentile_pushed_to_tail
-    }
-
-
-# Utility to parse a comma-sep numeric string and take the Nth (1-based like R)
-def parse_comma_num(s, idx_1based):
-    if pd.isna(s):
-        return np.nan
-    parts = str(s).split(',')
-    if len(parts) < idx_1based:
-        return np.nan
-    try:
-        return float(parts[idx_1based - 1])
-    except Exception:
-        return np.nan
-
-
-# Summaries like in R for each beta
-def summarize_beta(bidx, traits, x, rare_h2, rare_lower, rare_upper, theta_lower, theta_upper, p_tail_lower, p_tail_upper): 
-    rows = []
-    for i, trait in enumerate(traits):
-        rows_trait = x[x.iloc[:, 0].astype(str) == trait]
-        if len(rows_trait) != 9:
-            rows.append([np.nan] * 13)
-            continue
-
-        h2_vals = rare_h2[i, bidx, :]
-        th_lo = theta_lower[i, bidx, :]
-        th_up = theta_upper[i, bidx, :]
-        m_lo = rare_lower[i, bidx, :]
-        m_up = rare_upper[i, bidx, :]
-        p_lo_raw = p_tail_lower[i, bidx, :]
-        p_up_raw = p_tail_upper[i, bidx, :]
-
-        def qtiles(a, SHOW=False):
-            
-            a = a[~np.isnan(a)]
-            if a.size == 0:
-                return [np.nan, np.nan, np.nan]
-            
-            if SHOW: 
-                print('clive', len(a), np.mean(a)) 
-            return np.round(np.quantile(a, [0.5, 0.025, 0.975]), 3).tolist()
-
-        def med(a):
-            a = a[~np.isnan(a)]
-            return float(np.round(np.median(a), 1)) if a.size else np.nan
-
-        def mean_bool(cond):
-            cond = cond[~np.isnan(cond)]
-            return float(np.round(np.mean(cond.astype(float)), 2)) if cond.size else np.nan
-
-        row = []
-        row += qtiles(h2_vals, True)
-        row += qtiles(th_lo)
-        row += qtiles(th_up)
-        row += [med(m_lo), med(m_up)]
-        row += [mean_bool(p_lo_raw < 1), mean_bool(p_up_raw < 1)]
-        
-
-        rows.append(row)
-
-    df = pd.DataFrame(rows, columns=[
-        'h2','h2.2.5%','h2.97.5%',
-        'theta.lt','theta.lt.2.5%','theta.lt.97.5%',
-        'theta.ut','theta.ut.2.5%','theta.ut.97.5%',
-        'm.lt','m.ut','val.lt','val.ut'
-    ])
-    df.insert(0, 'trait', traits)
-    return df
-
-
-def get_quantiles(X): 
-    qx = [x for x in X if not np.isnan(x)] 
-    if len(qx) == 0: return [np.nan, np.nan, np.nan]
-    return np.round(np.quantile(qx, [0.5, 0.025, 0.975]), 3).tolist()
-
-def cond_bool(X): 
-    qx = [x for x in X if not np.isnan(x)]
-    return round(np.mean([float(x < 1) for x in qx]),3) 
-
-
-
-
-#############################################################################################
 ##################################       CLASSES          ###################################
 #############################################################################################
 
@@ -222,11 +58,8 @@ class PopProgress:
         self.spl = '' 
 
     def initialize(self, f_name, t, i): 
-        if self.loc is None: 
-            self.show('Initializing Trait Analysis: '+t+'\n') 
-        else: 
-            self.show('Complete\nInitializing Trait Analysis: '+t+'\n') 
-
+        if self.loc is None: self.show('Initializing Trait Analysis: '+t+'\n') 
+        else:                self.show('Complete\nInitializing Trait Analysis: '+t+'\n') 
         self.space = '         '
         self.show('Reading Input File: '+f_name+'\n') 
         
@@ -239,7 +72,6 @@ class PopProgress:
         self.space = '         ' 
         if COMMAND == 'PLOT': self.show('Collating Trait Result & Drawing Plot......') 
         elif COMMAND == 'PREDS': self.show('Evaluating PRS Tail Performance.......') 
-        elif COMMAND == 'MUNGE': self.show('Estimating High Effect Rare Heritability...') 
         else:    self.show('Beginning '+ts+' Tail Analysis.....') 
         self.loc, self.space = COMMAND, '' 
 
@@ -331,26 +163,15 @@ class TailTable:
         r5,p5   = R['R'][5]
         
         #Collating Trait Result & Drawing Plot......dict_keys(['tot', 25, 10, 5, 1, 50, 75, 90, 95, 99])
-
-
-        #for i,(name,v) in enumerate([['Samples',R['len']],['$R^2$',R['r2']],['QC',R['QC']],['$h^2_{HER}$','h2her']]): 
         for i,(name,v) in enumerate([['Samples',R['len']],['$R^2$',R['r2']],['QC',R['QC']],['$R_{<5\%}$',R['R'][5]],['$R_{>95\%}$',R['R'][95]]]): 
             self.y2 -= step
             if i == 1: my_row = [name, round(v,2)]
             elif i < 3: my_row = [name, v] 
-            
             else: 
                 my_row = [name, 'NA'] 
-                if v == 'h2her': 
-                    try: 
-                        beta = sorted([k for k in R['munge'].estimates.keys()])[-1]  
-                        val = R['munge'].estimates[beta]['h2'][0] 
-                        my_row = [name+'\n$(\\beta='+str(beta)+')$', val] 
-                    except: pass
-                else: 
-                    r = str(round(v[0],2)) 
-                    if v[1] > 0.05:  r = 'NS' 
-                    my_row = [name, r] 
+                r = str(round(v[0],2)) 
+                if v[1] > 0.05:  r = 'NS' 
+                my_row = [name, r] 
             self.add_row(my_row, COLORS=[c2,c2], X=(self.vwid[0],self.vwid[1]), Y=(self.y2-step,self.y2), FS=fs3, WIDTHS=self.widths, TITLE=True)
         self.ax.axis('off')
 
@@ -762,43 +583,6 @@ class PopOdds:
 
 
 
-class PopMunge:
-    def __init__(self, args, name, K): 
-        self.args, self.name = args, name 
-        self.r2 = K['r2'] 
-        self.p1, self.p2 = K['pvals'] 
-        self.e1, self.e2 = K['effects'][0][0], K['effects'][1][0]
-        self.s1, self.s2 = K['se'] 
-       
-        self.estimates = dd(lambda: {})  
-        self.r2 = 0.068
-        self.p1, self.p2 = 0.094, 3.8e-39
-        self.e1, self.e2 = -0.0761, 0.4963
-        self.s1, self.s2 = 0.027565, 0.028855
-
-
-
-
-    def iter_estimate(self, betas, I):
-        lower_samples = np.random.normal(loc=self.e1, scale=self.s1, size=I)
-        upper_samples = np.random.normal(loc=self.e2, scale=self.s2, size=I)
-        lower_samples = np.clip(lower_samples, 0, None)
-        upper_samples = np.clip(upper_samples, 0, None)
-        for bi,b in enumerate(betas):
-            Bk = dd(list)
-            for k in range(I):
-                p_in_tail = est_prop_in_tail([lower_samples[k], upper_samples[k]], beta=b, r2=self.r2)
-                Bk['v1'].append(p_in_tail[0])
-                Bk['v2'].append(p_in_tail[1])
-                p_in_tail = np.minimum(p_in_tail, 1.0)
-                ex = h2_rare_big(p_in_tail, beta=b, rare_maf=1e-5)
-                for ek,ev in ex.items(): Bk[ek].append(ev)
-                Bk['theta1'].append(p_in_tail[0])
-                Bk['theta2'].append(p_in_tail[1])
-            for x in ['h2','theta1','theta2']: self.estimates[b][x] = get_quantiles(Bk[x])
-            for x in ['m1','m2']: self.estimates[b][x] = np.median(Bk[x])
-            for x in ['v1','v2']: self.estimates[b][x] = cond_bool(Bk[x])
-        return
 
     
 
@@ -814,9 +598,8 @@ class PopOut:
         self.SS, self.SK = self.args.tailSize, self.args.tailSize/100.0
         if self.SS > 25: self.PopError('Invalid TailSize (Must be below 25%)')
         if self.SS < 1 and self.SS not in [0.5,0.25,0.1]: self.PopError('Invalid Tailsize - Accepted Fractions are 0.5, 0.25, 0.1') 
-        self.MUNGE = False 
-        self.R2 = True 
-
+        if args.regRange > 100 or args.regRange < 50 or args.regRange % 2 != 0: self.PopError('Invalid Regression Range - Must be even value between from 50 to 100') 
+        self.R2, self.PREDS = True, True 
         self.prepare_output_files() 
 
     def PopError(self, msg):  
@@ -835,6 +618,17 @@ class PopOut:
         self.fh = {'pop': open(self.args.out+'-popout.txt','w')} 
         self.fh['pop'].write('%-30s %8s %8s %8s %9s %9s %10s %10s' % ('---', 'tail','len', 'r2', 'pv1','pv2','se1','se2')) 
         self.fh['pop'].write(' %7s %7s %7s %7s %7s %7s %6s\n' % ('e1', 'e1Lo', 'e1Hi','e2','e2Lo','e2Hi','QC')) 
+        if self.args.savePts: self.fh['pts'] = open(self.args.out+'-pts.txt','w') 
+        if self.PREDS: 
+            self.fh['preds'] = open(self.args.out+'-odds.txt','w') 
+            xt = [5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95]
+            xn = ['<5', '5-15', '15-25', '25-35', '35-45', '45-55','55-65', '65-75', '75-85', '85-95','95']
+            self.fh['preds'].write('%-30s %10s %10s %10s %10s' % ('---', 'case','lowerOdds','upperOdds','param')) 
+            for x in xn: self.fh['preds'].write(' %10s' % x) 
+            self.fh['preds'].write('\n') 
+
+
+
         if self.R2:
             self.fh['r2'] = open(self.args.out+'-R.txt','w') 
             self.fh['r2'].write('%-30s %8s ' % ('---', 'R-tot')) 
@@ -843,21 +637,11 @@ class PopOut:
             self.fh['r2'].write(self.r_format % tuple(['R'+str(rl) for rl in self.r_locs])) 
             self.fh['r2'].write(self.r_format % tuple(['p'+str(rl) for rl in self.r_locs])) 
             self.fh['r2'].write('\n') 
-
-            #self.fh['r2'].write('%-35s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n' % ('---', 'R-tot','R1', 'R5', 'R10','R25','R75','R90','R95','R99')) 
-
-
-
-
-        if self.args.savePts: self.fh['pts'] = open(self.args.out+'-pts.txt','w') 
-        if self.MUNGE: 
-            self.fh['munge'] = open(self.args.out+'-h2her.txt','w') 
-            self.fh['munge'].write('%-30s %10s %10s %10s %10s %10s %10s\n' % ('---', 'beta','h2', 'h2Lo', 'h2Hi','theta1','theta2')) 
         return 
 
 
     
-    def write_out(self, MUNGE=True): 
+    def write_out(self): 
         w, n, r = self.fh['pop'], self.name, self.results[self.name] 
         w.write('%-30s %8s %8d %8.2f' % (n, self.args.tailSize, r['len'], r['r2'])) 
         for p in r['pvals']: 
@@ -868,6 +652,19 @@ class PopOut:
         w.write(' %7.2f %7.2f %7.3f' % tuple(r['effects'][1])) 
         w.write(' %6s\n' % r['QC']) 
         try: 
+            w = self.fh['preds'] 
+            for k,p in self.results[self.name]['preds'].items(): 
+                w.write('%-30s %10s %10.3f %10.3f %10s' % (self.name, int(p.loc), p.lowerTailOdds, p.upperTailOdds, 'odds')) 
+                CI_STRS = [] 
+                for x,v,CI in zip(p.X, p.odds, p.ci): 
+                    w.write(' %10.3f' % v) 
+                    CI_STRS.append(str(round(CI[0],2))+'-'+str(round(CI[1],2)))
+                w.write('\n') 
+                w.write('%-30s %10s %10.3f %10.3f %10s ' % (self.name, int(p.loc), p.lowerTailOdds, p.upperTailOdds, 'CI'))  
+                for c in CI_STRS: w.write('%10s ' % c) 
+                w.write('\n') 
+        except: pass 
+        try: 
             w = self.fh['r2'] 
             w.write('%-30s %8.3f ' % (n, r['R']['tot'][0])) 
             r_vals, p_vals = tuple([str(round(r['R'][k][0],3)) for k in self.r_locs]), [] 
@@ -877,22 +674,13 @@ class PopOut:
             self.fh['r2'].write(self.r_format % r_vals) 
             self.fh['r2'].write(self.r_format % tuple(p_vals)) 
             self.fh['r2'].write('\n') 
-
         except: pass                 
-
-
         try: 
             w = self.fh['pts'] 
             X, Y1, Y2 = r['means'] 
             w.write('%-20s %10s %5s %s\n' % (n, self.args.tailSize, 'X', ','.join([str(x) for x in X]))) 
             w.write('%-20s %10s %5s %s\n' % (n, self.args.tailSize, 'Ye', ','.join([str(x) for x in Y1]))) 
             w.write('%-20s %10s %5s %s\n' % (n, self.args.tailSize, 'Yo', ','.join([str(x) for x in Y2]))) 
-        except: pass  
-        try: 
-            w = self.fh['munge'] 
-            for b in self.args.betas: 
-                res = r['munge'].estimates[b] 
-                w.write('%-30s %10.2f %10.3f %10.3f %10.3f %10.3f %10.3f\n' % (n, b, res['h2'][0], res['h2'][1], res['h2'][2], res['theta1'][0], res['theta2'][0]))
         except: pass  
         
 
@@ -929,16 +717,12 @@ class PopOut:
         self.phenoPrs.sort() 
         return
 
-    def run_analysis(self, PREDS=True, MUNGE=False):
+    def run_analysis(self, PREDS=True): 
         self.get_tail_popout() 
         if PREDS: 
             self.progress.begin_analysis(COMMAND='PREDS') 
             self.get_preds() 
             self.progress.step(9) 
-        if MUNGE: 
-            self.progress.begin_analysis(COMMAND='MUNGE') 
-            self.get_munge() 
-            self.progress.step(1) 
         if not self.args.no_plots: 
             self.progress.begin_analysis(100*self.SK, COMMAND='PLOT') 
             tp = TailPlot(self.args, self.progress).create_trait_plot(self, self.name) 
@@ -950,7 +734,7 @@ class PopOut:
         self.results[self.name]['len'] = self.sampleLen 
         self.phenos, self.prs, self.prs_std = [d[0] for d in self.phenoPrs], [d[1] for d in self.phenoPrs], [d[2] for d in self.phenoPrs]
         self.results[self.name]['R'] = {'tot': stats.pearsonr(self.phenos, self.prs)} 
-        for job in [self.run_test, self.run_empirical_pv, self.run_qc, self.get_means]: 
+        for job in [self.run_test, self.run_qc, self.get_means]: 
             self.progress.step(2) 
             job() 
             self.progress.step(2) 
@@ -964,14 +748,15 @@ class PopOut:
         self.run_analysis() 
         self.write_out() 
 
-    def get_munge(self): 
-        munge = PopMunge(self.args, self.name, self.results[self.name]) 
-        munge.iter_estimate(self.args.betas, self.args.iter)
-        self.results[self.name]['munge'] = munge 
 
     def get_preds(self, iters=10): 
-        if self.args.predSize == 0: self.preds = [self.args.tailSize] 
-        if len(self.preds) == 1: self.preds.append(25) 
+        
+
+        self.preds = [self.args.tailSize] 
+        if self.args.predSize in self.preds or self.args.predSize == 0: self.preds.append(25) 
+        else:                                                           self.preds.append(self.args.predSize) 
+        
+        
         self.preds.sort(reverse=True) 
         a1, a2  = self.preds[0], 100-self.preds[0] 
         b1, b2 =  self.preds[1], 100-self.preds[1] 
@@ -1079,17 +864,12 @@ class PopOut:
 
 
 
-
-
-
-
     def run_test(self):
-        
-        # Normalize the PRS 
-        #ms = np.std(self.prs) 
-        #prs = self.prs / ms 
-        #self.phenos, self.prs, self.prs_std = [d[0] for d in self.phenoPrs], [d[1] for d in self.phenoPrs], [d[2] for d in self.phenoPrs]
-        
+        if self.args.regRange == 100: self.run_full_reg() 
+        else:                         self.run_split_reg(50-self.args.regRange/2, 50+self.args.regRange/2) 
+
+
+    def run_full_reg(self): 
         prs = [d[2] for d in self.phenoPrs]
         # Fit the regression model
         X = sm.add_constant(self.phenos)  # Add a constant to the predictor variable (for the intercept)
@@ -1121,16 +901,54 @@ class PopOut:
 
 
 
+    def run_split_reg(self, lo, hi):
+        prs = np.asarray([d[2] for d in self.phenoPrs], dtype=float)
+        phen = np.asarray(self.phenos, dtype=float)
+        # Fit the regression model used to set expectations.
+        # By default (regRange=100), fit on the full distribution.
+        # Otherwise, fit only on the central regRange% window:
+        #   regRange=90 -> 5-95, regRange=80 -> 10-90, regRange=50 -> 25-75, etc.
+        T_lo = np.percentile(phen, lo)
+        T_hi = np.percentile(phen, hi)
+        reg_idx = np.where((phen >= T_lo) & (phen <= T_hi))[0]
 
+        X_reg = sm.add_constant(phen[reg_idx])
+        self.model = sm.OLS(prs[reg_idx], X_reg).fit()
+        self.results[self.name]['params'] = self.model.params
 
+        # Summary R^2 is still reported as squared Pearson correlation across all points
+        R, pv = stats.pearsonr(prs, phen)
+        self.results[self.name]['r2'] = R * R
 
-
+        # Compute residuals against the regression expectation for ALL points
+        X_all = sm.add_constant(phen)
+        pred_all = self.model.predict(X_all)
+        resid_all = prs - pred_all
+        # Test upper tail "regression to mean"
+        T_upper = np.percentile(phen, 100 - self.SK * 100)
+        upper_tail_indices = np.where(phen > T_upper)[0]
+        residuals_upper = resid_all[upper_tail_indices]
+        upper_se =  np.std(residuals_upper) / np.sqrt(len(residuals_upper))
+        t_stat_upper, p_value_upper = stats.ttest_1samp(residuals_upper, 0)
+        ci_upper = stats.t.interval(0.95, len(residuals_upper) - 1, loc=np.mean(residuals_upper), scale=np.std(residuals_upper) / np.sqrt(len(residuals_upper)))
+        # Test lower tail "regression to mean"
+        T_lower = np.percentile(phen, self.SK * 100)
+        lower_tail_indices = np.where(phen < T_lower)[0]
+        residuals_lower = resid_all[lower_tail_indices]
+        lower_se =  np.std(residuals_lower) / np.sqrt(len(residuals_lower))
+        t_stat_lower, p_value_lower = stats.ttest_1samp(residuals_lower, 0)
+        ci_lower = stats.t.interval(0.95, len(residuals_lower) - 1, loc=np.mean(residuals_lower), scale=np.std(residuals_lower) / np.sqrt(len(residuals_lower)))
+        # Standard deviation of prs
+        # Organizing the result
+        self.results[self.name]['pvals'] = [p_value_lower, p_value_upper]
+        self.results[self.name]['se'] = [lower_se, upper_se]
+        self.results[self.name]['effects'] = [[np.mean(residuals_lower), ci_lower[0], ci_lower[1]]]
+        self.results[self.name]['effects'].append([np.mean(residuals_upper), ci_upper[0], ci_upper[1]])
 
 
 
 
     def run_empirical_pv(self, n_q=100):
-
         resids = dd(list) 
         yInt, beta = self.model.params  
         for pheno, prs, prs_std, pheno_qt, prs_qt in self.phenoPrs: 
@@ -1152,23 +970,27 @@ class PopOut:
 
 
     def run_qc(self,stepsize=1): 
-        # se 
         trunc_data = [d for d in self.phenoPrs if d[3] > 10 and d[3] < 90] 
+        #trunc_data = [d for d in self.phenoPrs] 
         X = sm.add_constant([t[0] for t in trunc_data])  # Add a constant to the predictor variable (for the intercept)
         qc_model = sm.OLS([t[1] for t in trunc_data], X).fit()
         yInt, beta = qc_model.params  
         resids = dd(list) 
+        raws   = dd(list) 
         for pheno, prs, prs_std, pheno_qt, prs_qt in trunc_data: 
             pred = yInt + beta*pheno 
             bin_val = self.get_qt(pheno_qt) 
             resids[bin_val].append(pred-prs) 
-            #resids[int(pheno_qt)].append(pred-prs) 
+            raws[bin_val].append(prs) 
         middle_pvs = [] 
         for k,R in resids.items(): 
             t_stat, pval = stats.ttest_1samp(R,0) 
             middle_pvs.append(pval) 
-        qc_val = min(middle_pvs) * len(middle_pvs) 
+            #print(k,np.mean(R))  
+        qc_val = min(middle_pvs) * len(middle_pvs)
+        #print(min(middle_pvs), len(middle_pvs)) 
         self.results[self.name]['qc_val'] = qc_val 
+        #print(qc_val) 
         self.results[self.name]['QC'] = qc_val > 0.05 
         return
 
@@ -1213,7 +1035,7 @@ def load_config(filenames, args, F):
         return names, colors 
     else: 
         if len(args.names) == len(filenames): names = args.names 
-        else:                                 names = [p.name.split('/')[-1].split('.')[0] for p in filenames] 
+        else:                                 names = [p.split('/')[-1].split('.')[0] for p in filenames] 
         if len(args.colors) == len(filenames): colors = args.colors 
         else:                                  colors = [cmap(j) for j in range(len(filenames))] 
         return names, colors 
@@ -1223,8 +1045,6 @@ def load_config(filenames, args, F):
 
 #def run_script(args, parser, command_line):
 def main(args, parser, command_line):
-
-    
     if len(args.popfiles) > 0: 
         progress = PopProgress(args,command_line) 
         popOut = PopOut(args, progress) 
@@ -1269,7 +1089,8 @@ if __name__ == '__main__':
     parser.add_argument("--names", nargs='+',default=[],type=str,metavar='',help="Trait Name(s)")
     parser.add_argument("--colors", nargs='+',default=[],type=str,metavar='',help="Trait Colors (For Forest Plot)")
     parser.add_argument("--tailSize", type=float,default=1.0,metavar='',help="Tail Size (default 1 Percent)")
-    parser.add_argument("--predSize", type=float,default=0,metavar='',help="Tail Size (default 1 Percent)")
+    parser.add_argument("--predSize", type=float,default=0,metavar='',help="Additional Odds Window (default 25 Percent)") 
+    parser.add_argument("--regRange", type=int,default=100,metavar='',help="Regression Range (default 100 - Full Distribution)")
     parser.add_argument('--makePOPfile',type=argparse.FileType('r'), nargs = 2, metavar='', help='Make POP File (PRS on Phenotype)') 
     parser.add_argument("-o","--out", type=str,default='out',metavar='',help="Output Prefix")
     parser.add_argument("--plotFormat", type=str,default='pdf',metavar='',help="pdf or png")
